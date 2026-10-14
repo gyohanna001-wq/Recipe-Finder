@@ -1,0 +1,655 @@
+import os
+import sys
+import json
+import random
+import requests
+
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import (
+    QApplication, QWidget, QLabel, QLineEdit, QPushButton,
+    QListWidget, QTextBrowser, QHBoxLayout, QVBoxLayout,
+    QFrame, QMessageBox
+)
+
+API_URL = "https://api.api-ninjas.com/v3/recipe"
+FAVORITES_FILE = "recipe_favorites.json"
+
+# Built-in recipes work even when the API is unavailable.
+RECIPES = [
+    {
+        "title": "Nigerian Jollof Rice",
+        "country": "Nigeria",
+        "ingredients": [
+            "3 cups parboiled rice", "4 tomatoes",
+            "1 red bell pepper", "1 onion",
+            "1/3 cup tomato paste", "3 cups stock",
+            "Vegetable oil", "Curry powder", "Thyme", "Salt"
+        ],
+        "instructions": [
+            "Rinse the rice.",
+            "Blend tomatoes, pepper, and half the onion.",
+            "Fry sliced onion and tomato paste in oil.",
+            "Add the blended mixture and simmer for 15-20 minutes.",
+            "Add stock, curry, thyme, and salt.",
+            "Stir in rice and cover.",
+            "Cook on low heat until the rice is tender, about 25-35 minutes.",
+            "Fluff the rice and serve."
+        ]
+    },
+    {
+        "title": "Ghanaian Jollof Rice",
+        "country": "Ghana",
+        "ingredients": [
+            "3 cups rice", "4 tomatoes", "1 bell pepper",
+            "1 onion", "Tomato paste", "Stock",
+            "Oil", "Ginger", "Curry powder", "Salt"
+        ],
+        "instructions": [
+            "Rinse the rice.",
+            "Blend tomatoes and bell pepper.",
+            "Fry onions and tomato paste in oil.",
+            "Add blended tomatoes and simmer until thick.",
+            "Add ginger, curry, salt, and stock.",
+            "Add rice and mix.",
+            "Cover and cook on low heat until tender.",
+            "Serve warm."
+        ]
+    },
+    {
+        "title": "Egusi Soup",
+        "country": "Nigeria",
+        "ingredients": [
+            "1 cup ground egusi", "2 cups stock",
+            "2 cups spinach or ugu", "Palm oil",
+            "1 onion", "Salt and pepper"
+        ],
+        "instructions": [
+            "Heat palm oil in a pot.",
+            "Add chopped onion and cook until soft.",
+            "Mix ground egusi with a little water.",
+            "Add the egusi mixture and stir.",
+            "Pour in stock and simmer.",
+            "Add greens and season to taste.",
+            "Cook until the soup thickens.",
+            "Serve with fufu or pounded yam."
+        ]
+    },
+    {
+        "title": "Suya",
+        "country": "Nigeria",
+        "ingredients": [
+            "Thinly sliced beef or tofu", "Ground peanuts",
+            "Paprika", "Ground ginger", "Garlic powder",
+            "Cayenne pepper", "Oil", "Salt"
+        ],
+        "instructions": [
+            "Mix peanuts and spices together.",
+            "Coat the beef or tofu with a little oil.",
+            "Cover with the spice mixture.",
+            "Place on skewers if desired.",
+            "Grill, turning regularly, until thoroughly cooked.",
+            "Serve with sliced onions and tomatoes."
+        ]
+    },
+    {
+        "title": "Waakye",
+        "country": "Ghana",
+        "ingredients": [
+            "1 cup black-eyed peas", "2 cups rice",
+            "Water", "Salt"
+        ],
+        "instructions": [
+            "Rinse the beans.",
+            "Simmer beans in water until partly tender.",
+            "Rinse and add the rice.",
+            "Add enough water for both to finish cooking.",
+            "Cover and cook until tender.",
+            "Season and serve with your favorite sides."
+        ]
+    },
+    {
+        "title": "Puff-Puff",
+        "country": "Nigeria",
+        "ingredients": [
+            "2 cups flour", "2 teaspoons yeast",
+            "1/4 cup sugar", "Warm water",
+            "Pinch of salt", "Oil for frying"
+        ],
+        "instructions": [
+            "Mix flour, yeast, sugar, and salt.",
+            "Add warm water to form a thick batter.",
+            "Cover and let rise for 45-60 minutes.",
+            "With adult supervision, heat oil in a deep pot.",
+            "Carefully fry small portions until golden.",
+            "Drain and allow to cool before serving."
+        ]
+    },
+    {
+        "title": "Injera with Misir Wat",
+        "country": "Ethiopia",
+        "ingredients": [
+            "2 cups red lentils", "1 onion", "Garlic",
+            "Tomato paste", "Paprika", "Cumin",
+            "Berbere spice", "Vegetable stock", "Salt"
+        ],
+        "instructions": [
+            "Cook chopped onion in oil until soft.",
+            "Add garlic and tomato paste.",
+            "Stir in paprika, cumin, and berbere.",
+            "Add lentils and vegetable stock.",
+            "Simmer until the lentils are tender.",
+            "Season and serve with injera."
+        ]
+    },
+    {
+        "title": "Chicken Yassa",
+        "country": "Senegal",
+        "ingredients": [
+            "Chicken pieces", "3 onions", "Lemon juice",
+            "Mustard", "Garlic", "Oil", "Salt", "Pepper"
+        ],
+        "instructions": [
+            "Mix lemon juice, mustard, garlic, salt, and pepper.",
+            "Marinate chicken in the refrigerator.",
+            "Brown chicken in a pot.",
+            "Cook sliced onions until soft.",
+            "Return chicken and add the marinade.",
+            "Cover and simmer until chicken is thoroughly cooked.",
+            "Serve with rice."
+        ]
+    },
+    {
+        "title": "Bobotie",
+        "country": "South Africa",
+        "ingredients": [
+            "Ground beef or plant-based mince", "1 onion",
+            "Curry powder", "Bread", "Milk", "2 eggs", "Salt"
+        ],
+        "instructions": [
+            "Preheat the oven to 175°C (350°F).",
+            "Cook onion and mince thoroughly in a pan.",
+            "Mix in curry powder and soaked bread.",
+            "Transfer to an oven-safe dish.",
+            "Whisk eggs with milk and pour over the mixture.",
+            "Bake until the topping is set and the dish is hot.",
+            "Serve with rice."
+        ]
+    },
+    {
+        "title": "Ndole",
+        "country": "Cameroon",
+        "ingredients": [
+            "Bitterleaf or suitable leafy greens",
+            "Peanut butter", "Onion", "Oil",
+            "Vegetable stock", "Salt", "Pepper"
+        ],
+        "instructions": [
+            "Prepare the greens according to their instructions.",
+            "Cook chopped onion in oil.",
+            "Stir peanut butter and stock into a smooth sauce.",
+            "Add greens and stir well.",
+            "Simmer until heated through.",
+            "Season and serve with plantains or rice."
+        ]
+    }
+]
+
+
+class RecipeFinder(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        self.setWindowTitle("Recipe Finder | World Flavors")
+        self.resize(1180, 800)
+        self.setMinimumSize(900, 600)
+
+        self.api_key = os.getenv("NINJAS_API_KEY", "").strip()
+        self.results = RECIPES.copy()
+        self.current_recipe = None
+        self.favorites = self.load_favorites()
+
+        self.setStyleSheet("""
+            QWidget {
+                background: #081820;
+                color: #edf5f7;
+                font-family: Segoe UI;
+                font-size: 13px;
+            }
+            QFrame {
+                background: #102630;
+                border: 1px solid #2a4b58;
+                border-radius: 10px;
+            }
+            QLabel#title {
+                color: #ffb52e;
+                font-size: 28px;
+                font-weight: bold;
+            }
+            QLineEdit, QListWidget, QTextBrowser {
+                background: #0b1d26;
+                border: 1px solid #365766;
+                border-radius: 7px;
+                padding: 8px;
+            }
+            QListWidget::item {
+                padding: 12px;
+                margin: 3px;
+                border-radius: 6px;
+            }
+            QListWidget::item:selected {
+                background: #176653;
+            }
+            QPushButton {
+                background: #173440;
+                border: none;
+                border-radius: 7px;
+                padding: 11px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #205060;
+            }
+            QPushButton#search {
+                background: #ffb52e;
+                color: #14212a;
+            }
+            QPushButton#favorite {
+                background: #168067;
+            }
+        """)
+
+        self.build_ui()
+        self.show_recipes(self.results)
+
+    def build_ui(self):
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(18, 16, 18, 16)
+        outer.setSpacing(12)
+
+        header = QFrame()
+        header_layout = QVBoxLayout(header)
+
+        title = QLabel("🍲  Recipe Finder")
+        title.setObjectName("title")
+
+        subtitle = QLabel(
+            "WORLD FLAVORS  •  AFRICAN FOODS  •  POWERED BY API NINJAS"
+        )
+
+        header_layout.addWidget(title)
+        header_layout.addWidget(subtitle)
+        outer.addWidget(header)
+
+        body = QHBoxLayout()
+        body.setSpacing(12)
+        outer.addLayout(body, 1)
+
+        # Left navigation
+        left = QFrame()
+        left.setFixedWidth(205)
+        left_layout = QVBoxLayout(left)
+
+        nav_title = QLabel("EXPLORE")
+        nav_title.setStyleSheet("color:#ffb52e;font-weight:bold;")
+        left_layout.addWidget(nav_title)
+
+        buttons = [
+            ("🔎 Search Recipes", self.focus_search),
+            ("🎲 Surprise Me", self.surprise_me),
+            ("♥ Favorites", self.show_favorites),
+            ("🌍 African Foods", self.show_african_foods),
+            ("🇳🇬 Nigerian Jollof", self.show_nigerian_jollof),
+            ("🇬🇭 Ghanaian Jollof", self.show_ghanaian_jollof),
+            ("💾 Save Favorites", self.save_favorites)
+        ]
+
+        for label, action in buttons:
+            button = QPushButton(label)
+            button.clicked.connect(action)
+            left_layout.addWidget(button)
+
+        left_layout.addStretch()
+
+        note = QLabel("Discover traditional dishes from across Africa!")
+        note.setWordWrap(True)
+        left_layout.addWidget(note)
+        body.addWidget(left)
+
+        # Center panel
+        center = QFrame()
+        center_layout = QVBoxLayout(center)
+
+        search_row = QHBoxLayout()
+
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText(
+            "Search recipes, e.g. Nigerian Jollof Rice..."
+        )
+        self.search_input.returnPressed.connect(self.search_recipes)
+
+        search_button = QPushButton("Search")
+        search_button.setObjectName("search")
+        search_button.clicked.connect(self.search_recipes)
+
+        search_row.addWidget(self.search_input, 1)
+        search_row.addWidget(search_button)
+
+        center_layout.addLayout(search_row)
+
+        self.results_label = QLabel("Search Results")
+        center_layout.addWidget(self.results_label)
+
+        self.recipe_list = QListWidget()
+        self.recipe_list.currentRowChanged.connect(self.select_recipe)
+        center_layout.addWidget(self.recipe_list, 1)
+
+        self.status_label = QLabel("Explore recipes from around the world.")
+        self.status_label.setWordWrap(True)
+        center_layout.addWidget(self.status_label)
+
+        body.addWidget(center, 1)
+
+        # Right recipe details panel
+        right = QFrame()
+        right_layout = QVBoxLayout(right)
+
+        self.recipe_title = QLabel("Welcome!")
+        self.recipe_title.setStyleSheet(
+            "color:#ffb52e;font-weight:bold;font-size:17px;"
+        )
+        right_layout.addWidget(self.recipe_title)
+
+        self.details = QTextBrowser()
+        self.details.setOpenExternalLinks(True)
+        right_layout.addWidget(self.details, 1)
+
+        self.favorite_button = QPushButton("♥  Add to Favorites")
+        self.favorite_button.setObjectName("favorite")
+        self.favorite_button.clicked.connect(self.add_favorite)
+        right_layout.addWidget(self.favorite_button)
+
+        body.addWidget(right, 2)
+
+        footer = QLabel(
+            "Recipe Finder  •  Explore African cuisine and recipes from around the world"
+        )
+        footer.setAlignment(Qt.AlignCenter)
+        outer.addWidget(footer)
+
+    def load_favorites(self):
+        try:
+            with open(FAVORITES_FILE, "r", encoding="utf-8") as file:
+                data = json.load(file)
+                return data if isinstance(data, list) else []
+        except (OSError, json.JSONDecodeError):
+            return []
+
+    def save_favorites(self):
+        try:
+            with open(FAVORITES_FILE, "w", encoding="utf-8") as file:
+                json.dump(self.favorites, file, indent=4, ensure_ascii=False)
+
+            self.status_label.setText("Favorites saved successfully!")
+        except OSError as error:
+            QMessageBox.warning(
+                self, "Save Error", f"Could not save favorites:\n{error}"
+            )
+
+    def show_recipes(self, recipes):
+        self.results = recipes
+        self.recipe_list.blockSignals(True)
+        self.recipe_list.clear()
+
+        for recipe in recipes:
+            self.recipe_list.addItem(recipe.get("title", "Untitled recipe"))
+
+        self.recipe_list.blockSignals(False)
+        self.results_label.setText(f"Search Results ({len(recipes)})")
+
+        if recipes:
+            self.recipe_list.setCurrentRow(0)
+        else:
+            self.current_recipe = None
+            self.recipe_title.setText("No recipes found")
+            self.details.setText(
+                "No matching recipes were found.\n\n"
+                "Try another search or browse African Foods."
+            )
+
+    def select_recipe(self, index):
+        if index < 0 or index >= len(self.results):
+            return
+
+        recipe = self.results[index]
+        self.current_recipe = recipe
+
+        self.recipe_title.setText(recipe.get("title", "Recipe"))
+
+        ingredients = recipe.get("ingredients", [])
+        instructions = recipe.get("instructions", [])
+
+        if isinstance(ingredients, str):
+            ingredients = [ingredients]
+        if isinstance(instructions, str):
+            instructions = [instructions]
+
+        html = [
+            f"<h3>{recipe.get('title', 'Recipe')}</h3>",
+            f"<p><b>Country:</b> {recipe.get('country', 'Not specified')}</p>",
+            "<h3>🥕 INGREDIENTS</h3><ul>"
+        ]
+
+        for ingredient in ingredients:
+            html.append(f"<li>{ingredient}</li>")
+
+        html.append("</ul><h3>👩‍🍳 INSTRUCTIONS</h3><ol>")
+
+        for instruction in instructions:
+            html.append(f"<li>{instruction}</li>")
+
+        html.append("</ol>")
+
+        if recipe.get("description"):
+            html.insert(
+                1, f"<p>{recipe['description']}</p>"
+            )
+
+        self.details.setHtml("".join(html))
+
+    def search_recipes(self):
+        query = self.search_input.text().strip()
+
+        if not query:
+            QMessageBox.information(
+                self, "Search", "Please enter a recipe name."
+            )
+            return
+
+        local_matches = [
+            recipe for recipe in RECIPES
+            if query.lower() in recipe["title"].lower()
+            or query.lower() in recipe["country"].lower()
+        ]
+
+        self.status_label.setText(f"Searching for {query}...")
+
+        if not self.api_key:
+            self.show_recipes(local_matches)
+            self.status_label.setText(
+                "Showing built-in matches. Set NINJAS_API_KEY "
+                "in your terminal to search online."
+            )
+            return
+
+        try:
+            response = requests.get(
+                API_URL,
+                headers={"X-Api-Key": self.api_key},
+                params={"title": query},
+                timeout=20
+            )
+
+            if response.status_code in (401, 403):
+                raise ValueError(
+                    "API key rejected. Check your API Ninjas key."
+                )
+
+            if response.status_code == 400:
+                raise ValueError(
+                    "The API rejected the search. Try a different phrase."
+                )
+
+            if response.status_code == 429:
+                raise ValueError(
+                    "API request limit reached. Try again later."
+                )
+
+            response.raise_for_status()
+            data = response.json()
+
+            if isinstance(data, dict):
+                data = (
+                    data.get("recipes")
+                    or data.get("results")
+                    or data.get("data")
+                    or []
+                )
+
+            if not isinstance(data, list):
+                data = []
+
+            online_matches = []
+
+            for item in data:
+                if isinstance(item, dict):
+                    recipe = self.normalise_recipe(item)
+                    if recipe:
+                        online_matches.append(recipe)
+
+            combined = local_matches + online_matches
+
+            # Remove duplicate titles.
+            unique = {}
+            for recipe in combined:
+                unique[recipe["title"].lower()] = recipe
+
+            matches = list(unique.values())
+            self.show_recipes(matches)
+
+            self.status_label.setText(
+                f"Found {len(matches)} matching recipe(s)."
+            )
+
+        except (requests.RequestException, ValueError) as error:
+            self.show_recipes(local_matches)
+            self.status_label.setText(
+                f"Online search failed: {error}. "
+                "Showing available built-in matches."
+            )
+
+    @staticmethod
+    def normalise_recipe(raw):
+        title = (
+            raw.get("title")
+            or raw.get("name")
+            or raw.get("recipe")
+            or "Online Recipe"
+        )
+
+        ingredients = raw.get("ingredients") or []
+        instructions = (
+            raw.get("instructions")
+            or raw.get("directions")
+            or []
+        )
+
+        if isinstance(ingredients, str):
+            ingredients = [
+                item.strip()
+                for item in ingredients.replace("\n", ",").split(",")
+                if item.strip()
+            ]
+
+        if isinstance(instructions, str):
+            instructions = [
+                item.strip()
+                for item in instructions.splitlines()
+                if item.strip()
+            ]
+
+            if len(instructions) <= 1:
+                instructions = [
+                    step.strip()
+                    for step in instructions[0].replace(". ", ".\n").splitlines()
+                    if step.strip()
+                ] if instructions else []
+
+        return {
+            "title": str(title),
+            "country": str(
+                raw.get("country") or raw.get("cuisine") or "Online recipe"
+            ),
+            "ingredients": ingredients if isinstance(ingredients, list) else [],
+            "instructions": instructions if isinstance(instructions, list) else [],
+            "description": str(raw.get("description") or "")
+        }
+
+    def focus_search(self):
+        self.search_input.setFocus()
+        self.search_input.selectAll()
+
+    def show_african_foods(self):
+        self.search_input.clear()
+        self.show_recipes(RECIPES)
+        self.status_label.setText("Explore African recipes.")
+
+    def show_nigerian_jollof(self):
+        self.search_input.setText("Nigerian Jollof Rice")
+        matches = [
+            recipe for recipe in RECIPES
+            if recipe["title"] == "Nigerian Jollof Rice"
+        ]
+        self.show_recipes(matches)
+
+    def show_ghanaian_jollof(self):
+        self.search_input.setText("Ghanaian Jollof Rice")
+        matches = [
+            recipe for recipe in RECIPES
+            if recipe["title"] == "Ghanaian Jollof Rice"
+        ]
+        self.show_recipes(matches)
+
+    def surprise_me(self):
+        recipe = random.choice(RECIPES)
+        self.show_recipes([recipe])
+        self.status_label.setText("Your surprise recipe is ready!")
+
+    def show_favorites(self):
+        self.show_recipes(self.favorites)
+        self.status_label.setText(
+            f"You have {len(self.favorites)} saved favorite(s)."
+        )
+
+    def add_favorite(self):
+        if not self.current_recipe:
+            QMessageBox.information(
+                self, "Favorites", "Select a recipe first."
+            )
+            return
+
+        title = self.current_recipe.get("title")
+
+        if any(item.get("title") == title for item in self.favorites):
+            self.status_label.setText("This recipe is already a favorite.")
+            return
+
+        self.favorites.append(self.current_recipe.copy())
+        self.save_favorites()
+        self.status_label.setText(f"Added {title} to favorites!")
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = RecipeFinder()
+    window.show()
+    sys.exit(app.exec_())
